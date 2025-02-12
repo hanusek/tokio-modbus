@@ -38,7 +38,7 @@ async fn tcp_issue301_write_test() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn server_context(listener: TcpListener) -> anyhow::Result<()> {
     println!("Starting up server on {:? }", listener.local_addr()?);
-    let server = Server::new(listener);
+    let mut server = Server::new(listener);
     let new_service = |_socket_addr| Ok(Some(TestService {}));
     let on_connected = |stream, socket_addr| async move {
         accept_tcp_connection(stream, socket_addr, new_service)

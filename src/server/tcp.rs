@@ -11,6 +11,7 @@ use socket2::{Domain, Socket, Type};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::{TcpListener, TcpStream},
+    task::AbortHandle,
 };
 use tokio_util::codec::Framed;
 
@@ -49,13 +50,14 @@ where
 #[derive(Debug)]
 pub struct Server {
     listener: TcpListener,
+    abort_handle: Option<AbortHandle>,
 }
 
 impl Server {
     /// Attach the Modbus server to a TCP socket server.
     #[must_use]
     pub fn new(listener: TcpListener) -> Self {
-        Self { listener }
+        Self { listener, abort_handle: None }
     }
 
     /// Listens for incoming connections and starts a Modbus TCP server task for
@@ -67,7 +69,7 @@ impl Server {
     /// If `OnConnected` returns `Ok(None)` then the connection is rejected
     /// but [`Self::serve()`] continues listening for new connections.
     pub async fn serve<S, T, F, OnConnected, OnProcessError>(
-        &self,
+        &mut self,
         on_connected: &OnConnected,
         on_process_error: OnProcessError,
     ) -> io::Result<()>
@@ -91,13 +93,16 @@ impl Server {
 
             let framed = Framed::new(transport, ServerCodec::default());
 
-            tokio::spawn(async move {
+            let handler = tokio::spawn(async move {
                 log::debug!("Processing requests from {socket_addr}");
                 if let Err(err) = process(framed, service).await {
                     on_process_error(err);
                 }
             });
+
+            self.abort_handle = Some(handler.abort_handle());
         }
+
     }
 
     /// Start an abortable Modbus TCP server task.
@@ -105,7 +110,7 @@ impl Server {
     /// Warning: Request processing is not scoped and could be aborted at any internal await point!
     /// See also: <https://rust-lang.github.io/wg-async/vision/roadmap/scopes.html#cancellation>
     pub async fn serve_until<S, T, F, X, OnConnected, OnProcessError>(
-        self,
+        &mut self,
         on_connected: &OnConnected,
         on_process_error: OnProcessError,
         abort_signal: X,
@@ -121,11 +126,15 @@ impl Server {
     {
         let abort_signal = abort_signal.fuse();
         tokio::select! {
+            biased;
+
+            () = abort_signal => {
+                self.abort_handle.take().ok_or(io::Error::from(io::ErrorKind::NotFound))?.abort();
+                Ok(Terminated::Aborted)
+            }
+
             res = self.serve(on_connected, on_process_error) => {
                 res.map(|()| Terminated::Finished)
-            },
-            () = abort_signal => {
-                Ok(Terminated::Aborted)
             }
         }
     }
@@ -246,7 +255,7 @@ mod tests {
         // bind 0 to let the OS pick a random port
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let listener = TcpListener::bind(addr).await.unwrap();
-        let server = Server::new(listener);
+        let mut server = Server::new(listener);
 
         // passes type-check is the goal here
         // added `mem::drop` to satisfy `must_use` compiler warnings

@@ -196,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn server_context(socket_addr: SocketAddr) -> anyhow::Result<()> {
     println!("Starting up server on {socket_addr}");
     let listener = TcpListener::bind(socket_addr).await?;
-    let server = Server::new(listener);
+    let mut server = Server::new(listener);
 
     let on_connected = |stream, _socket_addr| async move {
         let cert_path = Path::new("./pki/server.pem");
