@@ -90,6 +90,11 @@ impl Decoder for AduDecoder {
 
         let pdu_data = buf.split_to(pdu_len).freeze();
 
+        log::trace!(
+            "RX (TCP): {:02X?}",
+            [header_data.as_ref(), pdu_data.as_ref()].concat()
+        );
+
         Ok(Some((header, pdu_data)))
     }
 }
@@ -132,12 +137,14 @@ impl<'a> Encoder<RequestAdu<'a>> for ClientCodec {
             pdu: RequestPdu(request),
         } = adu;
         let request_pdu_size = request_pdu_size(&request)?;
+        let buf_offset = buf.len();
         buf.reserve(request_pdu_size + 7);
         buf.put_u16(hdr.transaction_id);
         buf.put_u16(PROTOCOL_ID);
         buf.put_u16(u16_len(request_pdu_size + 1));
         buf.put_u8(hdr.unit_id);
         encode_request_pdu(buf, &request);
+        log::trace!("TX (TCP): {:02X?}", &buf[buf_offset..]);
         Ok(())
     }
 }
@@ -152,12 +159,14 @@ impl Encoder<ResponseAdu> for ServerCodec {
             pdu: ResponsePdu(pdu_result),
         } = adu;
         let response_result_pdu_size = super::response_result_pdu_size(&pdu_result)?;
+        let buf_offset = buf.len();
         buf.reserve(response_result_pdu_size + 7);
         buf.put_u16(hdr.transaction_id);
         buf.put_u16(PROTOCOL_ID);
         buf.put_u16(u16_len(response_result_pdu_size + 1));
         buf.put_u8(hdr.unit_id);
         super::encode_response_result_pdu(buf, &pdu_result);
+        log::trace!("TX (TCP): {:02X?}", &buf[buf_offset..]);
         Ok(())
     }
 }

@@ -76,6 +76,10 @@ impl FrameDecoder {
             );
             self.dropped_bytes.clear();
         }
+        log::trace!(
+            "RX (RTU): {:02X?}",
+            [adu_buf.as_ref(), crc_buf.as_ref()].concat()
+        );
         let slave_id = adu_buf.split_to(1)[0];
         let pdu_data = adu_buf.freeze();
 
@@ -339,6 +343,7 @@ impl<'a> Encoder<RequestAdu<'a>> for ClientCodec {
         encode_request_pdu(buf, &request);
         let crc = calc_crc(&buf[buf_offset..]);
         buf.put_u16(crc);
+        log::trace!("TX (RTU): {:02X?}", &buf[buf_offset..]);
         Ok(())
     }
 }
@@ -359,6 +364,7 @@ impl Encoder<ResponseAdu> for ServerCodec {
         super::encode_response_result_pdu(buf, &pdu_res);
         let crc = calc_crc(&buf[buf_offset..]);
         buf.put_u16(crc);
+        log::trace!("TX (RTU): {:02X?}", &buf[buf_offset..]);
         Ok(())
     }
 }

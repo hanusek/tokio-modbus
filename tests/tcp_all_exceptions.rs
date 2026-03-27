@@ -31,7 +31,6 @@ async fn all_exceptions() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn server_context(socket_addr: SocketAddr) -> anyhow::Result<()> {
-    println!("Starting up server on {socket_addr}");
     let listener = TcpListener::bind(socket_addr).await?;
     let mut server = Server::new(listener);
     let new_service = |_socket_addr| Ok(Some(TestService {}));
